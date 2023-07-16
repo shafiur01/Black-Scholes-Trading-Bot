@@ -1,18 +1,24 @@
 import requests
 import json
 import time
-import datetime
 
 from TradingBot.Black_Scholes_Formula import black_scholes
 
 # Define the required input parameters
-S = float(input("Enter the current stock price: "))
-K = float(input("Enter the strike price: "))
-T = float(input("Enter the time to maturity in years: "))
-r = float(input("Enter the risk-free interest rate: "))
-sigma = float(input("Enter the annualized volatility: "))
-option_type = input("Enter the option type (call/put): ")
-
+try:
+    S = float(input("Enter the current stock price: "))
+    K = float(input("Enter the strike price: "))
+    T = float(input("Enter the time to maturity in years: "))
+    r = float(input("Enter the risk-free interest rate: "))
+    sigma = float(input("Enter the annualized volatility: "))
+    option_type = input("Enter the option type (call/put): ").lower()
+    assert option_type in ["call", "put"], "Option type must be either 'call' or 'put'"
+except ValueError:
+    print("Invalid input. Please enter a number.")
+    exit(1)
+except AssertionError as e:
+    print(e)
+    exit(1)
 
 # Define the main function to fetch the live data, calculate the option price, and place the order
 def trade_bot():
@@ -25,12 +31,21 @@ def trade_bot():
     json_body = json.dumps(body)
 
     # Send the request and get the response
-    response = requests.post(endpoint, headers=headers, data=json_body)
+    try:
+        response = requests.post(endpoint, headers=headers, data=json_body)
+        response.raise_for_status()  # Raises a HTTPError if the status is 4xx, 5xx
+    except requests.exceptions.RequestException as e:
+        print(f"Request failed: {e}")
+        return
     json_response = json.loads(response.text)
 
     # Extract the current stock price and volatility from the response
-    current_price = json_response['AMZN']['lastPrice']
-    volatility = json_response['AMZN']['volatility']
+    try:
+        current_price = json_response['AMZN']['lastPrice']
+        volatility = json_response['AMZN']['volatility']
+    except KeyError:
+        print("Error: unable to extract price/volatility data.")
+        return
 
     # Calculate the option price using the Black-Scholes formula
     option_price = black_scholes(current_price, K, T, r, volatility, option_type)
@@ -40,10 +55,14 @@ def trade_bot():
     json_order = json.dumps(order)
 
     # Use AWS Lambda to place the order automatically
-    # Replace the following lines with your own Lambda code
     lambda_endpoint = 'https://The_lambda_function_URL'
     lambda_headers = {'Content-Type': 'application/json'}
-    lambda_response = requests.post(lambda_endpoint, headers=lambda_headers, data=json_order)
+    try:
+        lambda_response = requests.post(lambda_endpoint, headers=lambda_headers, data=json_order)
+        lambda_response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"Lambda request failed: {e}")
+        return
 
     # Printing the order confirmation
     print(lambda_response.text)
@@ -53,3 +72,4 @@ def trade_bot():
 while True:
     trade_bot()
     time.sleep(300)  # 5 minutes
+
